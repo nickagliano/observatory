@@ -17,7 +17,7 @@ OTel Collector  :4317 (gRPC) / :4318 (HTTP)   ← services send OTLP here
       ├── metrics ──► Prometheus  :9090
       └── traces  ──► Grafana Tempo :3200
                               │
-                         Grafana :3000   ← you look here
+                         Grafana :9030   ← you look here
 ```
 
 Node Exporter runs alongside and gives you CPU, RAM, disk, and network for the host
