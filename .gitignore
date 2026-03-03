@@ -1,0 +1,10 @@
+# Docker volumes (never commit data)
+data/
+
+# OS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
