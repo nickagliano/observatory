@@ -6,7 +6,7 @@ Self-hosted observability for your EPS fleet. One command starts the full stack:
 ./run.sh start
 ```
 
-Then open **http://localhost:3000** — Grafana, with host metrics and any EPS dashboards
+Then open **http://localhost:9030** — Grafana, with host metrics and any EPS dashboards
 already loaded.
 
 ## What's inside

@@ -77,7 +77,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     ports:
-      - "3000:3000"   # Grafana UI
+      - "9030:3000"   # Grafana UI
     depends_on:
       - prometheus
       - tempo

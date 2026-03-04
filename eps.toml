@@ -24,4 +24,4 @@ brew = ["docker"]
 [service]
 enabled = true
 start   = "./run.sh start"
-port    = 3000
+port    = 9030
