@@ -9,11 +9,13 @@ use std::{
 };
 
 use anyhow::Result;
-use axum::{Router, routing::get};
+use axum::{Router, routing::get, http::{header, HeaderMap, StatusCode}, response::IntoResponse};
+use tower_http::trace::TraceLayer;
 use rusqlite::Connection;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
     // Load .env if present
     dotenvy::dotenv().ok();
 
@@ -56,6 +58,8 @@ async fn main() -> Result<()> {
         .route("/", get(dashboard::handler))
         .route("/health", get(|| async { "ok" }))
         .route("/api/services", get(api_services))
+        .route("/logs/:service", get(logs_handler))
+        .layer(TraceLayer::new_for_http())
         .with_state(db);
 
     let addr = format!("{host}:{port}");
@@ -64,6 +68,28 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn logs_handler(
+    axum::extract::Path(service): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    // Sanitize: prevent path traversal
+    if !service.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        return (StatusCode::BAD_REQUEST, HeaderMap::new(), "invalid service name".to_string())
+            .into_response();
+    }
+    let log_path = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(".epc/logs")
+        .join(format!("{service}.log"));
+
+    let content = std::fs::read_to_string(&log_path)
+        .unwrap_or_else(|_| format!("No log file found at {}", log_path.display()));
+
+    let html = dashboard::render_log_page(&service, &content);
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+    (StatusCode::OK, headers, html).into_response()
 }
 
 async fn api_services(

@@ -6,8 +6,64 @@ use rusqlite::Connection;
 use crate::db;
 
 pub async fn handler(State(db): State<Arc<Mutex<Connection>>>) -> Html<String> {
-    let html = render(&db);
-    Html(html)
+    Html(render(&db))
+}
+
+pub fn render_log_page(service: &str, content: &str) -> String {
+    let escaped = html_escape_log(content);
+    format!(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{service} — logs</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      background: #0f0f1a;
+      color: #c8c8e8;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 12px;
+      padding: 16px;
+    }}
+    .header {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }}
+    a.back {{
+      color: #6060a0;
+      text-decoration: none;
+      font-size: 12px;
+    }}
+    a.back:hover {{ color: #a0a0c0; }}
+    h1 {{
+      font-size: 14px;
+      font-weight: 600;
+      color: #a0a0c0;
+      letter-spacing: 0.05em;
+    }}
+    pre {{
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.6;
+      color: #c8c8e8;
+    }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a class="back" href="/">← Observatory</a>
+    <h1>{service}</h1>
+  </div>
+  <pre>{escaped}</pre>
+</body>
+</html>"#)
+}
+
+fn html_escape_log(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 fn status_pip(status: &str) -> String {
@@ -15,10 +71,12 @@ fn status_pip(status: &str) -> String {
 }
 
 fn dot(status: &str) -> &'static str {
+    // \u{FE0E} is the Unicode text variation selector — forces text rendering
+    // instead of emoji on iOS, which would otherwise replace ● with a color emoji.
     match status {
-        "running"  => "<span class=\"dot running\">●</span>",
-        "degraded" => "<span class=\"dot degraded\">◐</span>",
-        _          => "<span class=\"dot stopped\">○</span>",
+        "running"  => "<span class=\"dot running\">\u{25CF}\u{FE0E}</span>",
+        "degraded" => "<span class=\"dot degraded\">\u{25D0}\u{FE0E}</span>",
+        _          => "<span class=\"dot stopped\">\u{25CB}\u{FE0E}</span>",
     }
 }
 
@@ -48,13 +106,14 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
         let last_checked = &s.last_checked;
         let ci_badge = match &s.repo_url {
             Some(url) => format!(
-                r#"<a href="{url}/actions" target="_blank" class="ci-link"><img src="{url}/actions/workflows/ci.yml/badge.svg" alt="CI" class="ci-badge" loading="lazy"></a>"#
+                r#"<a href="{url}/actions" target="_blank" class="ci-link"><img src="{url}/actions/workflows/ci.yml/badge.svg" alt="CI" class="ci-badge" loading="lazy" onerror="this.closest('.ci-link').remove()"></a>"#
             ),
             None => String::new(),
         };
 
         cards.push_str(&format!(
-            r#"<div class="card">
+            r#"<a href="/logs/{name}" class="card-link">
+<div class="card">
   <div class="card-header">
     <span class="svc-name">{name}</span>
     <span class="badge">{pip}{status}</span>
@@ -63,6 +122,7 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
   <div class="sparkline">{dots}</div>
   {ci_badge}
 </div>
+</a>
 "#,
             status = s.last_status,
         ));
@@ -158,12 +218,22 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
     font-size: 13px;
     letter-spacing: 1px;
     line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
   }}
   .dot.running  {{ color: #4caf50; }}
   .dot.degraded {{ color: #ff9800; }}
   .dot.stopped  {{ color: #444466; }}
   .ci-link {{ display: inline-block; margin-top: 8px; }}
   .ci-badge {{ height: 18px; border-radius: 3px; vertical-align: middle; }}
+  a.card-link {{
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    margin-bottom: 12px;
+  }}
+  a.card-link .card {{ margin-bottom: 0; }}
+  a.card-link:hover .card {{ border-color: #4a4a7a; }}
   .bottom-bar {{
     position: fixed;
     bottom: 0;
