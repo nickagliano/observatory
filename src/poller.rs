@@ -31,20 +31,35 @@ struct ServicesFile {
 // ── eps.toml minimal parser ───────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+struct EpsPackage {
+    repository: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct EpsService {
     health_check: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct EpsManifest {
+    package: Option<EpsPackage>,
     service: Option<EpsService>,
 }
 
-fn read_health_check(dir: &str) -> Option<String> {
+/// Returns (health_check, repo_url) from eps.toml.
+fn read_eps_info(dir: &str) -> (Option<String>, Option<String>) {
     let path = PathBuf::from(dir).join("eps.toml");
-    let content = std::fs::read_to_string(path).ok()?;
-    let manifest: EpsManifest = toml::from_str(&content).ok()?;
-    manifest.service?.health_check
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return (None, None),
+    };
+    let manifest: EpsManifest = match toml::from_str(&content) {
+        Ok(m) => m,
+        Err(_) => return (None, None),
+    };
+    let health_check = manifest.service.and_then(|s| s.health_check);
+    let repo_url = manifest.package.and_then(|p| p.repository);
+    (health_check, repo_url)
 }
 
 // ── Port-listening check (mirrors EPC's approach) ─────────────────────────────
@@ -106,7 +121,7 @@ async fn poll_once(
     let ts_ip = tailscale_ip();
 
     for (name, entry) in &file.services {
-        let (status, response_ms, status_code) =
+        let (status, response_ms, status_code, repo_url) =
             check_service(http, name, entry, &ts_ip).await;
 
         let now = Utc::now().to_rfc3339();
@@ -119,7 +134,7 @@ async fn poll_once(
         {
             let conn = db.lock().unwrap();
             db::insert_check(&conn, name, &now, &status, response_ms, status_code).ok();
-            db::set_last_status(&conn, name, &status, &now).ok();
+            db::set_last_status(&conn, name, &status, &now, repo_url.as_deref()).ok();
         }
 
         // Alert on transition
@@ -147,14 +162,15 @@ async fn check_service(
     name: &str,
     entry: &ServiceEntry,
     ts_ip: &str,
-) -> (String, Option<i64>, Option<u16>) {
+) -> (String, Option<i64>, Option<u16>, Option<String>) {
+    let (health_check, repo_url) = read_eps_info(&entry.dir);
+
     if !is_port_listening(entry.port) {
-        return ("stopped".into(), None, None);
+        return ("stopped".into(), None, None, repo_url);
     }
 
-    let health_check = read_health_check(&entry.dir);
     if health_check.is_none() {
-        return ("running".into(), None, None);
+        return ("running".into(), None, None, repo_url);
     }
 
     let url = format!("http://{}:{}/health", ts_ip, entry.port);
@@ -169,16 +185,16 @@ async fn check_service(
             let ms = start.elapsed().as_millis() as i64;
             let code = resp.status().as_u16();
             if resp.status().is_success() {
-                ("running".into(), Some(ms), Some(code))
+                ("running".into(), Some(ms), Some(code), repo_url)
             } else {
                 eprintln!("[observatory] {name} health returned {code}");
-                ("degraded".into(), Some(ms), Some(code))
+                ("degraded".into(), Some(ms), Some(code), repo_url)
             }
         }
         Err(e) => {
             let ms = start.elapsed().as_millis() as i64;
             eprintln!("[observatory] {name} health check failed: {e}");
-            ("degraded".into(), Some(ms), None)
+            ("degraded".into(), Some(ms), None, repo_url)
         }
     }
 }

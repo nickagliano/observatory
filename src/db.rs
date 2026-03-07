@@ -17,6 +17,8 @@ pub fn init(conn: &Connection) -> Result<()> {
             last_checked TEXT NOT NULL
         );",
     )?;
+    // Migration: add repo_url column (no-op if already present)
+    conn.execute_batch("ALTER TABLE service_state ADD COLUMN repo_url TEXT").ok();
     Ok(())
 }
 
@@ -49,12 +51,18 @@ pub fn get_last_status(conn: &Connection, service: &str) -> Result<Option<String
     }
 }
 
-pub fn set_last_status(conn: &Connection, service: &str, status: &str, checked_at: &str) -> Result<()> {
+pub fn set_last_status(
+    conn: &Connection,
+    service: &str,
+    status: &str,
+    checked_at: &str,
+    repo_url: Option<&str>,
+) -> Result<()> {
     conn.execute(
-        "INSERT INTO service_state (service, last_status, last_checked)
-         VALUES (?1, ?2, ?3)
-         ON CONFLICT(service) DO UPDATE SET last_status = ?2, last_checked = ?3",
-        params![service, status, checked_at],
+        "INSERT INTO service_state (service, last_status, last_checked, repo_url)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(service) DO UPDATE SET last_status = ?2, last_checked = ?3, repo_url = ?4",
+        params![service, status, checked_at, repo_url],
     )?;
     Ok(())
 }
@@ -94,17 +102,19 @@ pub struct ServiceSnapshot {
     pub service: String,
     pub last_status: String,
     pub last_checked: String,
+    pub repo_url: Option<String>,
 }
 
 pub fn all_states(conn: &Connection) -> Result<Vec<ServiceSnapshot>> {
     let mut stmt = conn.prepare(
-        "SELECT service, last_status, last_checked FROM service_state ORDER BY service",
+        "SELECT service, last_status, last_checked, repo_url FROM service_state ORDER BY service",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(ServiceSnapshot {
             service: row.get(0)?,
             last_status: row.get(1)?,
             last_checked: row.get(2)?,
+            repo_url: row.get(3)?,
         })
     })?;
     let mut out = Vec::new();

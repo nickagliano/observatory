@@ -46,6 +46,12 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
         let pip = status_pip(&s.last_status);
         let name = &s.service;
         let last_checked = &s.last_checked;
+        let ci_badge = match &s.repo_url {
+            Some(url) => format!(
+                r#"<a href="{url}/actions" target="_blank" class="ci-link"><img src="{url}/actions/workflows/ci.yml/badge.svg" alt="CI" class="ci-badge" loading="lazy"></a>"#
+            ),
+            None => String::new(),
+        };
 
         cards.push_str(&format!(
             r#"<div class="card">
@@ -55,6 +61,7 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
   </div>
   <div class="card-meta">{ms_label} &nbsp;·&nbsp; {last_checked}</div>
   <div class="sparkline">{dots}</div>
+  {ci_badge}
 </div>
 "#,
             status = s.last_status,
@@ -155,6 +162,8 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
   .dot.running  {{ color: #4caf50; }}
   .dot.degraded {{ color: #ff9800; }}
   .dot.stopped  {{ color: #444466; }}
+  .ci-link {{ display: inline-block; margin-top: 8px; }}
+  .ci-badge {{ height: 18px; border-radius: 3px; vertical-align: middle; }}
   .bottom-bar {{
     position: fixed;
     bottom: 0;
