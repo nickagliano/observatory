@@ -1,10 +1,11 @@
 [package]
 name        = "observatory"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "Lightweight health monitoring dashboard for EPC services"
 authors     = ["nickagliano"]
 license     = "MIT"
 platform    = ["aarch64-apple-darwin"]
+repository  = "https://github.com/nickagliano/observatory"
 
 [eps]
 customization_guide = "CUSTOMIZE.md"
