@@ -1,27 +1,16 @@
 [package]
 name        = "observatory"
 version     = "0.1.0"
-description = "Self-hosted observability stack: OTel Collector → Prometheus + Grafana Tempo → Grafana"
-platform    = [
-  "aarch64-apple-darwin",
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
-]
+description = "Lightweight health monitoring dashboard for EPC services"
 authors     = ["nickagliano"]
 license     = "MIT"
-repository  = "https://github.com/nickagliano/observatory"
+platform    = ["aarch64-apple-darwin"]
 
 [eps]
 customization_guide = "CUSTOMIZE.md"
-hooks_dir           = "Scripts/"
-
-[hooks]
-install = "Scripts/install.sh"
-
-[system-dependencies]
-brew = ["docker"]
 
 [service]
-enabled = true
-start   = "./run.sh start"
-port    = 9030
+enabled      = true
+start        = "HOST=$(tailscale ip -4) ./serve.sh"
+port         = 9090
+health_check = "GET /health"

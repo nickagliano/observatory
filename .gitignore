@@ -1,5 +1,8 @@
-# Docker volumes (never commit data)
-data/
+# Build artifacts
+target/
+
+# Secrets
+.env
 
 # OS
 .DS_Store
