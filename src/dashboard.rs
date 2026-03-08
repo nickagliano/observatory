@@ -1,9 +1,33 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use axum::{extract::State, response::Html};
 use rusqlite::Connection;
+use serde::Deserialize;
 
 use crate::db;
+
+// ── services.toml reader (for port → URL resolution) ─────────────────────────
+
+#[derive(Deserialize, Default)]
+struct ServicesFile {
+    #[serde(default)]
+    services: HashMap<String, ServiceEntry>,
+}
+
+#[derive(Deserialize)]
+struct ServiceEntry {
+    port: u16,
+}
+
+fn load_service_ports() -> HashMap<String, u16> {
+    let path = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join(".epc/services.toml");
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    let sf: ServicesFile = toml::from_str(&raw).unwrap_or_default();
+    sf.services.into_iter().map(|(k, v)| (k, v.port)).collect()
+}
 
 pub async fn handler(State(db): State<Arc<Mutex<Connection>>>) -> Html<String> {
     Html(render(&db))
@@ -62,8 +86,28 @@ pub fn render_log_page(service: &str, content: &str) -> String {
 </html>"#)
 }
 
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // consume ESC [ ... <final byte in 0x40–0x7E>
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for ch in chars.by_ref() {
+                    if ('\x40'..='\x7e').contains(&ch) { break; }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn html_escape_log(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    let stripped = strip_ansi(s);
+    stripped.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 fn status_pip(status: &str) -> String {
@@ -84,6 +128,8 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
     let conn = db.lock().unwrap();
 
     let states = db::all_states(&conn).unwrap_or_default();
+    let ports = load_service_ports();
+    let host = std::env::var("HOST").unwrap_or_else(|_| "localhost".to_string());
 
     let mut cards = String::new();
     for s in &states {
@@ -111,18 +157,27 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
             None => String::new(),
         };
 
+        let svc_name_html = match ports.get(name) {
+            Some(port) => {
+                let url = format!("http://{}:{}", host, port);
+                format!(r#"<a href="{url}" target="_blank" class="svc-link">{name}</a>"#)
+            }
+            None => name.to_string(),
+        };
+
         cards.push_str(&format!(
-            r#"<a href="/logs/{name}" class="card-link">
-<div class="card">
+            r#"<div class="card">
   <div class="card-header">
-    <span class="svc-name">{name}</span>
+    <span class="svc-name">{svc_name_html}</span>
     <span class="badge">{pip}{status}</span>
   </div>
   <div class="card-meta">{ms_label} &nbsp;·&nbsp; {last_checked}</div>
   <div class="sparkline">{dots}</div>
-  {ci_badge}
+  <div class="card-actions">
+    {ci_badge}
+    <a href="/logs/{name}" class="logs-btn">logs →</a>
+  </div>
 </div>
-</a>
 "#,
             status = s.last_status,
         ));
@@ -224,16 +279,29 @@ fn render(db: &Arc<Mutex<Connection>>) -> String {
   .dot.running  {{ color: #4caf50; }}
   .dot.degraded {{ color: #ff9800; }}
   .dot.stopped  {{ color: #444466; }}
-  .ci-link {{ display: inline-block; margin-top: 8px; }}
+  .ci-link {{ display: inline-block; }}
   .ci-badge {{ height: 18px; border-radius: 3px; vertical-align: middle; }}
-  a.card-link {{
-    display: block;
-    text-decoration: none;
-    color: inherit;
-    margin-bottom: 12px;
+  .card-actions {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
   }}
-  a.card-link .card {{ margin-bottom: 0; }}
-  a.card-link:hover .card {{ border-color: #4a4a7a; }}
+  .svc-link {{
+    color: #c8c8f0;
+    text-decoration: none;
+  }}
+  .svc-link:hover {{ color: #a0a0ff; text-decoration: underline; }}
+  .logs-btn {{
+    margin-left: auto;
+    font-size: 11px;
+    color: #6060a0;
+    text-decoration: none;
+    padding: 2px 6px;
+    border: 1px solid #3a3a6a;
+    border-radius: 4px;
+  }}
+  .logs-btn:hover {{ color: #a0a0c0; border-color: #6060a0; }}
   .bottom-bar {{
     position: fixed;
     bottom: 0;
