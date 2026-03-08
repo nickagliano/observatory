@@ -18,7 +18,7 @@ It also fires txtme alerts when a service transitions between running/degraded/s
 **What it does:** The URL Observatory POSTs to when a service changes status. Set this
 to your txtme endpoint to receive SMS alerts on state transitions.
 **Default:** Not set — alerts are silently skipped if absent.
-**How to customize:** Add `TXTME_URL=http://100.78.103.79:5543/send` to `.env`.
+**How to customize:** Add `TXTME_URL=http://100.78.103.79:5543/notify` to `.env`.
 Alert messages look like: `[Observatory] morning_brief is DOWN` / `[Observatory] txtme recovered`.
 
 ### `PORT`
